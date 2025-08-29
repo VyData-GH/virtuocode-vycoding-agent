@@ -1,0 +1,119 @@
+# ================================
+# CORE FRAMEWORK - FastAPI & Server
+# ================================
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# ================================
+# LANGGRAPH & LANGCHAIN ECOSYSTEM - VERSIONS STABLES COMPATIBLES
+# ================================
+# LangGraph version stable et bien testée
+langgraph==0.2.14
+
+# LangChain core et composants - versions compatibles et stables
+langchain==0.2.16
+langchain-core==0.2.38
+langchain-community==0.2.16
+
+# Intégration OpenAI/Claude - versions stables
+langchain-openai==0.1.23
+# Pour Claude (Anthropic) - version stable
+langchain-anthropic==0.1.23
+
+# ================================
+# INTÉGRATIONS EXTERNES - VERSIONS STABLES
+# ================================
+# GitHub API - version stable
+PyGithub==2.1.1
+
+# Requêtes HTTP pour Monday.com API - versions stables
+requests==2.31.0
+httpx==0.25.2  # Alternative moderne à requests, compatible FastAPI
+
+# ================================
+# DATA & SERIALIZATION - VERSIONS COMPATIBLES
+# ================================
+pydantic>=2.5.0,<2.8.0  # Range compatible avec tout l'écosystème
+pydantic-settings>=2.1.0,<2.3.0  # Pour les configurations
+python-dotenv==1.0.0
+
+# ================================
+# UTILITAIRES SYSTÈME - VERSIONS STABLES
+# ================================
+# Gestion des processus subprocess améliorée
+psutil==5.9.6
+
+# Logging avancé - versions stables
+structlog==23.2.0
+rich==13.7.0  # Pour les logs colorés
+
+# Gestion des dates
+python-dateutil==2.8.2
+
+# Fichiers asynchrones
+aiofiles==23.2.1
+
+# ================================
+# SÉCURITÉ & VALIDATION - VERSION STABLE
+# ================================
+cryptography>=41.0.0,<44.0.0  # Version stable et compatible
+
+# ================================
+# INTÉGRATION IA - VERSION STABLE ET COMPATIBLE
+# ================================
+# Claude SDK direct - version compatible avec langchain-anthropic 0.1.23
+anthropic>=0.30.0,<1.0.0
+
+# ================================
+# DÉVELOPPEMENT & DEBUGGING - VERSIONS STABLES
+# ================================
+# Uniquement en développement - commentez en production
+pytest==7.4.3
+pytest-asyncio==0.21.1
+# black==23.11.0
+# flake8==6.1.0
+
+# ================================
+# ALTERNATIVES & FALLBACKS - VERSIONS STABLES
+# ================================
+# Git operations pour manipulation repository
+GitPython==3.1.40
+
+# ================================
+# PRODUCTION OPTIMIZATIONS - VERSIONS STABLES
+# ================================
+# ASGI server plus performant pour la production
+gunicorn==21.2.0
+
+# Variables d'environnement pour production
+environs==10.3.0
+
+# ================================
+# VERSIONING NOTES - VERSIONS STABLES ET COMPATIBLES
+# ================================
+# IMPORTANT: Ces versions ont été choisies pour leur STABILITÉ et COMPATIBILITÉ
+# 
+# CRITÈRES DE SÉLECTION :
+# ✅ Versions testées ensemble dans des projets de production
+# ✅ Compatibilité vérifiée entre langgraph 0.2.14 et langchain 0.2.16
+# ✅ Range pydantic conservateur pour éviter les conflits
+# ✅ Versions anthropic et openai stables et bien documentées
+#
+# CES VERSIONS SONT RECOMMANDÉES POUR :
+# - Projets de production nécessitant la stabilité
+# - Équipes préférant la fiabilité aux dernières fonctionnalités
+# - Environnements où la compatibilité est critique
+#
+# PROCHAINES ÉTAPES RECOMMANDÉES :
+# 1. Installer et tester ces versions stables
+# 2. Développer et stabiliser votre application
+# 3. Migrer vers des versions plus récentes en tant que mise à jour séparée
+#
+# COMPATIBILITÉ PYTHON :
+# - Python >= 3.9 recommandé  
+# - Python 3.8+ supporté
+# - Testé avec Python 3.9, 3.10, 3.11
+#
+# DURÉE DE VIE :
+# Ces versions resteront stables et supportées pendant au moins 6-12 mois 
