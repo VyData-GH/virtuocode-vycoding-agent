@@ -1,14 +1,16 @@
 from typing import Dict, Any
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from models.schemas import TaskRequest, WorkflowStatus, WorkflowState
 
-from models.state import GraphState
-from models.schemas import TaskRequest, TaskStatus
 from nodes import (
     prepare_environment,
+    analyze_requirements,
     implement_task,
     run_tests,
     debug_code,
+    quality_assurance_automation,
     finalize_pr,
     update_monday
 )
@@ -18,258 +20,234 @@ logger = get_logger(__name__)
 
 
 def create_workflow_graph() -> StateGraph:
-
-    logger.info("🔧 Création du graphe de workflow...")
+    workflow = StateGraph(WorkflowState)
     
-    workflow = StateGraph(GraphState)
+    workflow.add_node("prepare_environment", prepare_environment)
+    workflow.add_node("analyze_requirements", analyze_requirements)
+    workflow.add_node("implement_task", implement_task) 
+    workflow.add_node("run_tests", run_tests)
+    workflow.add_node("debug_code", debug_code)
+    workflow.add_node("quality_assurance_automation", quality_assurance_automation)
+    workflow.add_node("finalize_pr", finalize_pr)
+    workflow.add_node("update_monday", update_monday)
     
-    workflow.add_node("prepare", prepare_environment)
-    workflow.add_node("implement", implement_task)
-    workflow.add_node("test", run_tests)
-    workflow.add_node("debug", debug_code)
-    workflow.add_node("finalize", finalize_pr)
-    workflow.add_node("update", update_monday)
+    workflow.set_entry_point("prepare_environment")
     
-    workflow.set_entry_point("prepare")
-    
-    
-    workflow.add_edge("prepare", "implement")
-    
-    workflow.add_edge("implement", "test")
+    workflow.add_edge("prepare_environment", "analyze_requirements")
+    workflow.add_edge("analyze_requirements", "implement_task")
+    workflow.add_edge("implement_task", "run_tests")
     
     workflow.add_conditional_edges(
-        "test",
-        should_debug_or_finalize,
+        "run_tests",
+        _should_debug,
         {
-            "debug": "debug",
-            "finalize": "finalize"
+            "debug": "debug_code",
+            "continue": "quality_assurance_automation",
+            "end": END
         }
     )
     
-    workflow.add_edge("debug", "test")
+    workflow.add_edge("debug_code", "run_tests")
     
-    workflow.add_edge("finalize", "update")
-    
-    workflow.add_edge("update", END)
-    
-    logger.info("✅ Graphe de workflow créé avec succès")
+    workflow.add_edge("quality_assurance_automation", "finalize_pr")
+    workflow.add_edge("finalize_pr", "update_monday")
+    workflow.add_edge("update_monday", END)    
+    logger.info("✅ Graphe de workflow créé et configuré pour RabbitMQ avec nouveaux nœuds")
     return workflow
 
 
-def should_debug_or_finalize(state: GraphState) -> str:
-    if not state.get("test_results"):
-        logger.warning("Aucun résultat de test - Passage à la finalisation")
-        return "finalize"
+def _should_debug(state: WorkflowState) -> str:
+    if not state.results or "test_results" not in state.results:
+        logger.warning("⚠️ Aucun résultat de test trouvé")
+        return "end"
     
-    latest_test = state["test_results"][-1]
+    test_results = state.results["test_results"]    
+    if not test_results:
+        logger.info("📝 Aucun test exécuté - passage à l'assurance qualité")
+        return "continue"
     
-    if latest_test.success:
-        logger.info("✅ Tests réussis - Passage à la finalisation")
-        return "finalize"
-    
-    debug_attempts = state.get("debug_attempts", 0)
-    max_debug_attempts = state.get("max_debug_attempts", 3)
-    
-    if debug_attempts < max_debug_attempts:
-        logger.info(f"🔧 Tests échoués - Passage au debug (tentative {debug_attempts + 1}/{max_debug_attempts})")
-        return "debug"
+    if isinstance(test_results, dict):
+        tests_passed = test_results.get("success", False)
+        failed_count = len(test_results.get("failed_tests", []))
+    elif isinstance(test_results, list):
+        tests_passed = all(test.get("passed", False) for test in test_results)
+        failed_count = len([test for test in test_results if not test.get("passed", False)])
     else:
-        logger.warning(f"❌ Limite de debug atteinte ({max_debug_attempts}) - Passage à la finalisation")
-        return "finalize"
+        tests_passed = bool(test_results)
+        failed_count = 0 if tests_passed else 1
+    
+    debug_attempts = len([node for node in state.completed_nodes if node == "debug_code"])
+    max_debug_attempts = 3    
+    if tests_passed:
+        logger.info(f"✅ Tests réussis - passage à l'assurance qualité")
+        return "continue"
+    elif debug_attempts >= max_debug_attempts:
+        logger.warning(f"⚠️ Limite de debug atteinte ({debug_attempts}/{max_debug_attempts}) - passage forcé à QA")
+        state.error = f"Tests échoués après {debug_attempts} tentatives de debug"
+        return "continue"
+    else:
+        logger.info(f"🔧 Tests échoués ({failed_count} échecs) - tentative debug {debug_attempts + 1}/{max_debug_attempts}")
+        return "debug"
 
 
 async def run_workflow(task_request: TaskRequest) -> Dict[str, Any]:
-
-    logger.info(f"🚀 Lancement du workflow pour la tâche: {task_request.title}")
+    workflow_id = f"workflow_{task_request.task_id}_{int(datetime.now().timestamp())}"
+    
+    logger.info(f"🚀 Démarrage workflow {workflow_id} pour: {task_request.title}")
     
     try:
-        workflow = create_workflow_graph()
+        initial_state = _create_initial_state(task_request, workflow_id)
         
-        memory = MemorySaver()
-        compiled_workflow = workflow.compile(checkpointer=memory)
-        
-        initial_state = _create_initial_state(task_request)
+        workflow_graph = create_workflow_graph()
+        checkpointer = MemorySaver()
+        app = workflow_graph.compile(checkpointer=checkpointer)
         
         config = {
             "configurable": {
-                "thread_id": f"task_{task_request.task_id}",
-                "checkpoint_ns": "ai_automation"
+                "thread_id": workflow_id,
+                "task_id": task_request.task_id
             }
         }
         
-        logger.info(f"📋 État initial créé pour la tâche {task_request.task_id}")
-        
+        logger.info(f"📊 Exécution workflow avec configuration thread_id={workflow_id}")        
         final_state = None
-        step_count = 0
-        max_steps = 20
+        node_count = 0
         
-        async for state in compiled_workflow.astream(initial_state, config):
-            step_count += 1
+        async for state in app.astream(initial_state, config=config):
+            node_count += 1
+            current_node = state.current_node if hasattr(state, 'current_node') else "unknown"            
+            logger.info(f"📍 Nœud {node_count}: {current_node}")
             
-            current_state = list(state.values())[0] if state else {}
-            
-            current_status = current_state.get("current_status", "unknown")
-            last_operation = current_state.get("last_operation_result", "")
-            
-            logger.info(f"📊 Étape {step_count}: {current_status} - {last_operation}")
-            
-            if not current_state.get("should_continue", True):
-                logger.info("🛑 Arrêt demandé par le workflow")
+            if state:
+                final_state = state
+                
+            if node_count > 25:
+                logger.error("⚠️ Limite de nœuds atteinte - arrêt du workflow")
                 break
-            
-            if step_count >= max_steps:
-                logger.error(f"❌ Limite d'étapes atteinte ({max_steps}) - Arrêt forcé")
-                break
-            
-            final_state = current_state
         
         if final_state:
             result = _process_final_result(final_state, task_request)
-            logger.info(f"✅ Workflow terminé avec succès - Statut: {result['status']}")
+            logger.info(f"✅ Workflow {workflow_id} terminé avec succès")
+            return result
         else:
-            result = _create_error_result(task_request, "Workflow interrompu ou échoué")
-            logger.error("❌ Workflow échoué - Aucun état final")
-        
-        return result
-        
+            error_msg = "Workflow terminé sans état final"
+            logger.error(f"❌ {error_msg}")
+            return _create_error_result(task_request, error_msg)
+            
     except Exception as e:
-        error_msg = f"Exception lors de l'exécution du workflow: {str(e)}"
+        error_msg = f"Erreur lors de l'exécution du workflow: {str(e)}"
         logger.error(error_msg, exc_info=True)
         return _create_error_result(task_request, error_msg)
 
 
-def _create_initial_state(task_request: TaskRequest) -> GraphState:
-
-    return {
-        "task": task_request,
-        "current_status": TaskStatus.PENDING,
-        
-        # Résultats et historique
-        "git_result": None,
-        "test_results": [],
-        "error_logs": [],
-        "code_changes": {},
-        "pr_info": None,
-        
-        # Compteurs et limites
-        "debug_attempts": 0,
-        "max_debug_attempts": 3,
-        
-        # Messages et contexte
-        "ai_messages": [f"Initialisation du workflow pour: {task_request.title}"],
-        "working_directory": None,
-        "modified_files": [],
-        "last_operation_result": "Workflow initialisé",
-        
-        # Contrôle de flux
-        "should_continue": True
-    }
+def _create_initial_state(task_request: TaskRequest, workflow_id: str) -> WorkflowState:
+    return WorkflowState(
+        workflow_id=workflow_id,
+        status=WorkflowStatus.PENDING,
+        current_node=None,
+        completed_nodes=[],
+        task=task_request,
+        results={
+            "ai_messages": [],
+            "error_logs": [],
+            "modified_files": [],
+            "test_results": [],
+            "debug_attempts": 0
+        },
+        error=None,
+        started_at=datetime.now(),
+        completed_at=None
+    )
 
 
-def _process_final_result(final_state: GraphState, task_request: TaskRequest) -> Dict[str, Any]:
-    current_status = final_state.get("current_status", TaskStatus.FAILED)
+def _process_final_result(final_state: WorkflowState, task_request: TaskRequest) -> Dict[str, Any]:   
+    current_status = final_state.status
+    success = current_status == WorkflowStatus.COMPLETED
     
-    success = current_status in [TaskStatus.COMPLETED]
+    duration = 0
+    if final_state.started_at:
+        end_time = final_state.completed_at or datetime.now()
+        duration = (end_time - final_state.started_at).total_seconds()
     
-    pr_info = final_state.get("pr_info")
-    test_results = final_state.get("test_results", [])
-    error_logs = final_state.get("error_logs", [])
-    modified_files = final_state.get("modified_files", [])
+    results = final_state.results or {}
+    error_message = final_state.error
+    completed_nodes = final_state.completed_nodes or []
     
-    total_errors = len(error_logs)
-    tests_passed = len([t for t in test_results if t.success])
-    total_tests = len(test_results)
-    debug_attempts = final_state.get("debug_attempts", 0)
+    pr_url = None
+    if "pr_info" in results:
+        pr_info = results["pr_info"]
+        if isinstance(pr_info, dict):
+            pr_url = pr_info.get("pr_url")
+        else:
+            pr_url = getattr(pr_info, "pr_url", None)
+    
+    files_modified = 0
+    tests_executed = 0
+    qa_score = 0
+    analysis_score = 0
+    
+    if "code_changes" in results:
+        files_modified = len(results["code_changes"]) if isinstance(results["code_changes"], dict) else 0
+    
+    if "test_results" in results:
+        test_results = results["test_results"]
+        if isinstance(test_results, dict):
+            tests_executed = test_results.get("total_tests", 0)
+        elif isinstance(test_results, list):
+            tests_executed = len(test_results)
+    
+    if "quality_assurance" in results:
+        qa_data = results["quality_assurance"]
+        qa_score = qa_data.get("qa_summary", {}).get("overall_score", 0)
+    
+    if "requirements_analysis" in results:
+        analysis_data = results["requirements_analysis"]
+        analysis_score = analysis_data.get("complexity_score", 5)
     
     result = {
         "success": success,
-        "status": current_status,
+        "status": current_status.value if current_status else "unknown",
+        "workflow_id": final_state.workflow_id,
         "task_id": task_request.task_id,
-        "task_title": task_request.title,
-        
-        "pr_url": pr_info.pr_url if pr_info else None,
-        "pr_number": pr_info.pr_number if pr_info else None,
-        "modified_files": modified_files,
-        
+        "duration": duration,
+        "completed_nodes": completed_nodes,
+        "pr_url": pr_url,
+        "error": error_message,
         "metrics": {
-            "files_modified": len(modified_files),
-            "tests_executed": total_tests,
-            "tests_passed": tests_passed,
-            "debug_attempts": debug_attempts,
-            "errors_encountered": total_errors,
-            "duration": _calculate_workflow_duration(final_state)
+            "files_modified": files_modified,
+            "tests_executed": tests_executed,
+            "nodes_completed": len(completed_nodes),
+            "duration_seconds": duration,
+            "qa_score": qa_score,
+            "analysis_complexity": analysis_score,
+            "workflow_completeness": len(completed_nodes) / 8 * 100  # 8 nœuds au total
         },
-        
-        "test_results": [
-            {
-                "command": t.test_command,
-                "success": t.success,
-                "duration": t.duration,
-                "exit_code": t.exit_code
-            } for t in test_results
-        ],
-        "error_summary": error_logs[-5:] if error_logs else [],
-        "ai_messages": final_state.get("ai_messages", [])[-10:],
-        
-        "started_at": task_request.created_at.isoformat(),
-        "completed_at": final_state.get("completed_at", task_request.created_at).isoformat() if final_state.get("completed_at") else None
+        "results": results
     }
+    
+    logger.info(f"📊 Workflow terminé - Succès: {success}, Durée: {duration:.1f}s, Nœuds: {len(completed_nodes)}, QA: {qa_score}")
     
     return result
 
 
-def _create_error_result(task_request: TaskRequest, error_message: str) -> Dict[str, Any]:
+def _create_error_result(task_request: TaskRequest, error_msg: str) -> Dict[str, Any]:
     return {
         "success": False,
-        "status": TaskStatus.FAILED,
+        "status": "failed",
+        "workflow_id": f"error_{task_request.task_id}",
         "task_id": task_request.task_id,
-        "task_title": task_request.title,
-        "error": error_message,
-        
+        "duration": 0,
+        "completed_nodes": [],
         "pr_url": None,
-        "pr_number": None,
-        "modified_files": [],
-        
+        "error": error_msg,
         "metrics": {
             "files_modified": 0,
             "tests_executed": 0,
-            "tests_passed": 0,
-            "debug_attempts": 0,
-            "errors_encountered": 1,
-            "duration": "N/A"
+            "nodes_completed": 0,
+            "duration_seconds": 0,
+            "qa_score": 0,
+            "analysis_complexity": 0,
+            "workflow_completeness": 0
         },
-        
-        "test_results": [],
-        "error_summary": [error_message],
-        "ai_messages": [f"Erreur fatale: {error_message}"],
-        
-        "started_at": task_request.created_at.isoformat(),
-        "completed_at": None
-    }
-
-
-def _calculate_workflow_duration(final_state: GraphState) -> str:
-    
-    try:
-        started_at = final_state["task"].created_at
-        completed_at = final_state.get("completed_at")
-        
-        if not completed_at:
-            return "N/A"
-        
-        duration = completed_at - started_at
-        total_seconds = int(duration.total_seconds())
-        
-        if total_seconds < 60:
-            return f"{total_seconds}s"
-        elif total_seconds < 3600:
-            minutes = total_seconds // 60
-            seconds = total_seconds % 60
-            return f"{minutes}m {seconds}s"
-        else:
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-            return f"{hours}h {minutes}m"
-            
-    except Exception:
-        return "N/A" 
+        "results": {}
+    } 
