@@ -6,7 +6,9 @@ from typing import Any, Dict
 
 
 def configure_logging(debug: bool = False, log_level: str = "INFO") -> None:
-    level = getattr(logging, log_level.upper(), logging.INFO)    
+
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    
     console = Console(force_terminal=True)
     rich_handler = RichHandler(
         console=console,
@@ -40,13 +42,16 @@ def configure_logging(debug: bool = False, log_level: str = "INFO") -> None:
 
 
 def get_logger(name: str) -> structlog.BoundLogger:
+
     if not hasattr(get_logger, '_configured'):
         configure_logging()
-        get_logger._configured = True    
+        get_logger._configured = True
+    
     return structlog.get_logger(name)
 
 
-class LoggerMixin:    
+class LoggerMixin:
+    
     @property
     def logger(self) -> structlog.BoundLogger:
         if not hasattr(self, '_logger'):
@@ -58,6 +63,7 @@ app_logger = get_logger("ai-automation-agent")
 
 
 def log_workflow_step(step_name: str, task_id: str, **kwargs) -> None:
+
     app_logger.info(
         f"🔄 Étape: {step_name}",
         step=step_name,
@@ -67,7 +73,9 @@ def log_workflow_step(step_name: str, task_id: str, **kwargs) -> None:
 
 
 def log_error(error: Exception, context: Dict[str, Any] = None) -> None:
-    context = context or {}    
+
+    context = context or {}
+    
     app_logger.error(
         f"❌ Erreur: {str(error)}",
         error_type=type(error).__name__,
@@ -78,8 +86,10 @@ def log_error(error: Exception, context: Dict[str, Any] = None) -> None:
 
 
 def log_success(message: str, **kwargs) -> None:
+
     app_logger.info(f"✅ {message}", **kwargs)
 
 
 def log_warning(message: str, **kwargs) -> None:
+
     app_logger.warning(f"⚠️ {message}", **kwargs) 

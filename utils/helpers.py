@@ -28,11 +28,9 @@ def sanitize_branch_name(name: str) -> str:
     
     clean_name = re.sub(r'[^\w\s-]', '', clean_name)
     clean_name = re.sub(r'\s+', '-', clean_name)
-    
     clean_name = re.sub(r'-+', '-', clean_name)
-    
     clean_name = clean_name.strip('-')
-    
+
     if len(clean_name) > 50:
         clean_name = clean_name[:50].rstrip('-')
     
@@ -97,7 +95,15 @@ def safe_get_nested(data: Dict[str, Any], keys: str, default: Any = None) -> Any
 
 
 def merge_dicts(*dicts: Dict[str, Any]) -> Dict[str, Any]:
-
+    """
+    Fusionne plusieurs dictionnaires.
+    
+    Args:
+        *dicts: Dictionnaires à fusionner
+        
+    Returns:
+        Dictionnaire fusionné
+    """
     result = {}
     for d in dicts:
         if d:
@@ -106,15 +112,18 @@ def merge_dicts(*dicts: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_valid_git_branch_name(name: str) -> bool:
-
+    """
+    Vérifie si un nom est valide pour une branche Git.
+    
+    Args:
+        name: Nom à vérifier
+        
+    Returns:
+        True si le nom est valide
+    """
     if not name:
         return False
     
-    # Règles Git pour les noms de branches
-    # - Pas de caractères spéciaux problématiques
-    # - Pas de doubles slashes
-    # - Pas de points en fin
-    # - etc.
     
     invalid_patterns = [
         r'\.\.', r'\s', r'~', r'\^', r':', r'\?', r'\*', r'\[',
@@ -129,7 +138,9 @@ def is_valid_git_branch_name(name: str) -> bool:
 
 
 def extract_repo_info_from_url(url: str) -> Optional[Dict[str, str]]:
+
     try:
+        # Nettoyer l'URL
         clean_url = url.strip()
         if clean_url.endswith('.git'):
             clean_url = clean_url[:-4]
@@ -154,14 +165,14 @@ def extract_repo_info_from_url(url: str) -> Optional[Dict[str, str]]:
     except Exception:
         return None
 
-
-def sanitize_filename(filename: str) -> str:       
+# Etapes de l'optimisation
+def sanitize_filename(filename: str) -> str:
     invalid_chars = r'[<>:"/\\|?*\x00-\x1f]'
     
     clean_name = re.sub(invalid_chars, '_', filename)
-    
+
     clean_name = clean_name.strip('. ')
-    
+
     if len(clean_name) > 200:
         name, ext = os.path.splitext(clean_name)
         clean_name = name[:200-len(ext)] + ext
@@ -170,6 +181,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 def create_status_emoji(success: bool, partial: Optional[bool] = None) -> str:
+
     if success:
         return "✅"
     elif partial:
@@ -179,6 +191,7 @@ def create_status_emoji(success: bool, partial: Optional[bool] = None) -> str:
 
 
 def parse_test_output(output: str) -> Dict[str, Any]:
+
     result = {
         "total_tests": 0,
         "passed": 0,
@@ -186,7 +199,7 @@ def parse_test_output(output: str) -> Dict[str, Any]:
         "errors": [],
         "framework": "unknown"
     }
-    
+ 
     patterns = {
         "pytest": {
             "total": r'(\d+) passed',
@@ -207,19 +220,22 @@ def parse_test_output(output: str) -> Dict[str, Any]:
     
     for framework, pattern_dict in patterns.items():
         if framework.lower() in output.lower():
-            result["framework"] = framework            
+            result["framework"] = framework
+            
             for key, pattern in pattern_dict.items():
                 if key in ["total", "failed"]:
                     match = re.search(pattern, output)
                     if match:
-                        result[key if key != "total" else "total_tests"] = int(match.group(1))            
+                        result[key if key != "total" else "total_tests"] = int(match.group(1))
+            
             break
     
-    result["passed"] = max(0, result["total_tests"] - result["failed"])    
+    result["passed"] = max(0, result["total_tests"] - result["failed"])
+    
     error_patterns = [r'FAIL.*', r'ERROR.*', r'AssertionError.*', r'TypeError.*']
     
     for pattern in error_patterns:
         matches = re.findall(pattern, output, re.MULTILINE)
-        result["errors"].extend(matches[:5])  # Limiter à 5 erreurs
+        result["errors"].extend(matches[:5])
     
     return result
