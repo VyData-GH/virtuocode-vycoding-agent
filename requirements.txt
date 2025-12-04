@@ -35,7 +35,7 @@ asyncpg==0.29.0
 # 4. LANGGRAPH + LANGCHAIN (Workflow AI)
 # ================================================================
 langgraph==0.2.14
-langgraph-checkpoint==1.0.12
+langgraph-checkpoint==3.0.0
 
 # LangChain Core
 langchain==0.2.16
