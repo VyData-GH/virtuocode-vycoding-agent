@@ -41,7 +41,7 @@ langgraph-checkpoint==1.0.12
 langchain==0.2.16
 langchain-core==0.2.38
 langchain-community==0.2.16
-langchain-text-splitters==0.2.4
+langchain-text-splitters==0.3.9
 
 # LangChain Providers
 langchain-openai==0.1.23
