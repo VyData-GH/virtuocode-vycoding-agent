@@ -107,7 +107,7 @@ pyjwt[crypto]==2.8.0
 passlib[bcrypt]==1.7.4
 
 # OAuth2 Monday.com
-authlib==1.2.1
+authlib==1.6.6
 python-jose[cryptography]==3.3.0
 
 # ================================================================
