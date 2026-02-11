@@ -102,7 +102,7 @@ mypy-extensions==1.1.0
 # ================================================================
 # 12. SÉCURITÉ + AUTHENTIFICATION (OAuth Monday.com)
 # ================================================================
-cryptography==43.0.3
+cryptography==46.0.5
 pyjwt[crypto]==2.8.0
 passlib[bcrypt]==1.7.4
 
